@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {checkAccess} from '../lib/security.ts';
+const env={APP_USERNAME:'owner',APP_PASSWORD:'test-only-secret-1234'};const auth='Basic '+Buffer.from('owner:test-only-secret-1234').toString('base64');
+test('unconfigured and weak credentials fail closed',()=>{assert.equal(checkAccess(auth,{}),'unconfigured');assert.equal(checkAccess(auth,{...env,APP_PASSWORD:'short'}),'unconfigured');});
+test('all data requires correct basic auth',()=>{assert.equal(checkAccess(null,env),'unauthorized');assert.equal(checkAccess('Bearer fake',env),'unauthorized');assert.equal(checkAccess('Basic !!!',env),'unauthorized');assert.equal(checkAccess('Basic '+Buffer.from('owner:wrong').toString('base64'),env),'unauthorized');assert.equal(checkAccess(auth,env),'authorized');});

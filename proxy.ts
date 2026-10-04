@@ -1,0 +1,3 @@
+import {NextResponse,type NextRequest} from 'next/server';import {checkAccess} from './lib/security';
+export function proxy(request:NextRequest){const access=checkAccess(request.headers.get('authorization'),process.env);if(access==='authorized')return NextResponse.next();return new NextResponse(access==='unconfigured'?'O acesso privado ainda precisa ser configurado no EasyPanel.':'Acesso privado',{status:access==='unconfigured'?503:401,headers:{'WWW-Authenticate':'Basic realm="BluePay Planner", charset="UTF-8"','Cache-Control':'no-store'}});}
+export const config={matcher:['/((?!api/health$).*)']};
