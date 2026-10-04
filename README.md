@@ -5,6 +5,7 @@ Acompanhamento mensal de patrimônio, investimentos e fluxo consolidado. Next.js
 Projeto: bluepayplanner. Serviços: app e db (PostgreSQL 17).
 Fonte GitHub: allexbonilha/bluepayplanner, branch main, Build Path /. Builder Dockerfile, caminho Dockerfile. Porta interna 3000.
 Configure DATABASE_URL com a conexão interna do serviço db. Não exponha a porta do banco. Os dados residem no volume persistente do PostgreSQL e sobrevivem a redeploys.
+Configure APP_ORIGIN com a URL HTTPS pública (sem caminho) para validar salvamentos atrás do proxy.
 Configure APP_USERNAME e APP_PASSWORD (mínimo 16 caracteres) na aba Environment. Sem essas duas variáveis o app bloqueia todo o acesso com HTTP 503, exceto /api/health. Com elas, o navegador solicita autenticação HTTP; a interface financeira continua sem tela de login. Use somente HTTPS. Não coloque credenciais no repositório.
 Ative Enable Auto Deploy no Overview: pushes em main acionam builds no EasyPanel. Dockerfile executa os testes antes do build. Não há agendamento ou agente executando mudanças por conta própria.
 
