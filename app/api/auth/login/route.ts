@@ -1,4 +1,4 @@
-import {configured,allowedOrigin,requestToken,sessionCookie} from '@/lib/security';
+import {allowedOrigin,requestToken,sessionCookie} from '@/lib/security';
 import {reserveLogin,newSession,loginUser} from '@/lib/auth';
 import {readLimitedBody,BodyTooLarge} from '@/lib/request-body';
 export const runtime='nodejs',dynamic='force-dynamic';
@@ -6,7 +6,6 @@ const reply=(error:string,status:number,headers:Record<string,string>={})=>Respo
 export async function POST(request:Request){
  if(!allowedOrigin(request.headers.get('origin'),request.url,process.env))return reply('Origem não permitida.',403);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return reply('Solicitação inválida.',415);
- if(!configured(process.env))return reply('O acesso precisa ser configurado no servidor.',503);
  try{
   const retry=await reserveLogin(request);if(retry)return reply('Muitas tentativas. Aguarde antes de tentar novamente.',429,{'Retry-After':String(retry)});
   const text=await readLimitedBody(request,4096);

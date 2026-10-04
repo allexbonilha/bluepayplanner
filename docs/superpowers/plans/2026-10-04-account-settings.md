@@ -1,0 +1,7 @@
+# Account credentials in the database
+
+Replace the owner's environment-based authentication with the same salted scrypt storage used by registered users. A one-time migration hashes the existing owner password only if its database password is absent, preserves the owner ID and financial portfolio, and stops consulting credentials from Environment afterwards. Remove APP_USERNAME and APP_PASSWORD from EasyPanel only after verifying migration and login. Registration and normal authentication must work without either variable.
+
+Add Minha conta to the application: name, username, optional new password and confirmation, mandatory current password. Preserve the requested username choice allexbonilha through the editable username field; the user enters and saves their own new credentials. Protect changes with validated session, exact Origin, bounded body, rate limits, password reauthentication, uniqueness, optimistic concurrency and a database transaction. Revoke all previous sessions and rotate the current session on success. Never return password hashes to the client or modify financial records.
+
+Verify validation first, then PostgreSQL tests using an isolated copy: migration, login without credential variables, no environment reset, current-password checks, cross-user authorization, username collisions, old-token rejection and unchanged owner state. Review the complete change independently; run tests/type check/build; push and verify production before removing obsolete credential variables and redeploying.

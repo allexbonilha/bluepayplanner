@@ -1,4 +1,4 @@
-import {configured,allowedOrigin,requestToken,sessionCookie} from '@/lib/security';
+import {allowedOrigin,requestToken,sessionCookie} from '@/lib/security';
 import {reserveLogin,registerUser,newSession} from '@/lib/auth';
 import {validateRegistration} from '@/lib/user-security';
 import {readLimitedBody,BodyTooLarge} from '@/lib/request-body';
@@ -7,7 +7,6 @@ const reply=(error:string,status:number,headers:Record<string,string>={})=>Respo
 export async function POST(request:Request){
  if(!allowedOrigin(request.headers.get('origin'),request.url,process.env))return reply('Origem não permitida.',403);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return reply('Solicitação inválida.',415);
- if(!configured(process.env))return reply('O cadastro não está disponível agora.',503);
  try{
   const retry=await reserveLogin(request,'register');if(retry)return reply('Muitas tentativas de cadastro. Aguarde e tente novamente.',429,{'Retry-After':String(retry)});
   const text=await readLimitedBody(request,4096);let body;try{body=JSON.parse(text);}catch{return reply('Solicitação inválida.',400);}

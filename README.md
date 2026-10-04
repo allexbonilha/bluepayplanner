@@ -1,34 +1,29 @@
 # BluePay Planner / Saldo
-Acompanhamento mensal de patrimônio, investimentos e fluxo consolidado. Next.js + PostgreSQL, preparado para EasyPanel.
+Acompanhamento mensal de patrimônio, investimentos e fluxo consolidado. Next.js + PostgreSQL no EasyPanel.
 
-## EasyPanel
-Projeto: bluepayplanner. Serviços: app e db (PostgreSQL 17).
-Fonte GitHub: allexbonilha/bluepayplanner, branch main, Build Path /. Builder Dockerfile, caminho Dockerfile. Porta interna 3000.
-Configure DATABASE_URL com a conexão interna do serviço db. Não exponha a porta do banco. Os dados residem no volume persistente do PostgreSQL e sobrevivem a redeploys.
-Configure APP_ORIGIN com a URL HTTPS pública (sem caminho) para validar salvamentos atrás do proxy.
-Configure APP_USERNAME e APP_PASSWORD (mínimo 16 caracteres) na aba Environment. A tela /login usa essas credenciais para o proprietário e /register permite criar usuários independentes. Sem configuração do proprietário, nenhuma sessão pode acessar os dados. Use somente HTTPS. Nunca coloque credenciais no repositório.
-Ative Enable Auto Deploy no Overview: pushes em main acionam builds no EasyPanel. Dockerfile executa os testes antes do build. Não há agendamento ou agente executando mudanças por conta própria.
+## Deploy
+Projeto bluepayplanner, serviços app e db (PostgreSQL 17). GitHub allexbonilha/bluepayplanner, main, Build Path /, Dockerfile e porta interna 3000. Auto Deploy atualiza o app a cada push; o build executa a suíte antes de compilar.
 
-## Dados existentes
-A versão Sites original permanece intacta. Seu banco D1 não acompanha o GitHub. Exporte Cópia completa JSON no Saldo original e mantenha um backup. A transferência deve ser feita somente depois de validar a proteção do novo endereço. Não envie backups financeiros ao repositório público.
+Configure somente DATABASE_URL (conexão interna, com banco em volume persistente) e APP_ORIGIN (URL HTTPS pública sem caminho). Não exponha a porta do PostgreSQL. Credenciais de usuário não são variáveis de ambiente: nomes de usuário e hashes de senha ficam na tabela users.
 
-## Local
+## Cadastro, login e Minha conta
+/register cria uma conta independente com nome, usuário único normalizado (3–32 caracteres) e senha confirmada (16–128 caracteres). As senhas usam scrypt com salt aleatório (N=32768, r=8, p=3), nunca texto puro. Novos usuários começam sem contas ou fechamentos pessoais.
+
+Minha conta permite alterar nome, usuário e senha pelo site. A senha atual é obrigatória. A nova senha é opcional e precisa de confirmação. O servidor valida a sessão, Origin, tamanho, limite de tentativas, senha atual, unicidade e revisão das credenciais. A atualização e revogação de sessões ocorrem em uma transação; uma sessão nova mantém o dispositivo atual conectado. Outros dispositivos precisam entrar novamente. Os registros financeiros continuam vinculados ao mesmo ID.
+
+O proprietário existente conserva o ID owner e seu patrimônio. Durante a atualização, somente se o proprietário ainda não possuir hash, o app migra uma vez a senha legada de APP_PASSWORD para scrypt. Depois disso, essas variáveis nunca redefinem o usuário ou a senha. Remova APP_USERNAME e APP_PASSWORD do EasyPanel após verificar a migração; não são necessárias para login, sessões ou cadastro. Se um proprietário legado não tiver hash nem senha disponível para migrar, seu acesso falha fechado e não pode ser reivindicado pelo cadastro público.
+
+## Segurança e dados
+Tokens aleatórios de 256 bits ficam em cookies HttpOnly, Secure e SameSite=Strict em produção; somente o hash do token fica no banco. Sessões expiram após 30 minutos sem requisições autenticadas ou 8 horas desde o login. Logout revoga a sessão. Nome de usuário e hash atual vinculam a versão da sessão; alterações invalidam tokens anteriores.
+
+Todas as operações financeiras usam exclusivamente o user_id da sessão validada, nunca campos enviados pelo cliente. X-Account-ID detecta trocas entre abas e não concede acesso. Escritas financeiras usam comparação de revisão para impedir perda de atualizações. Login e ajustes de conta têm limites compartilhados no banco de 10 tentativas por IP e 60 globais a cada 15 minutos; cadastro tem 5 por IP e 30 globais. O último X-Forwarded-For precisa ser inserido pelo proxy confiável; mantenha a porta interna. CSP com nonce, HSTS, proteção contra frames e no-store acompanham as respostas.
+
+Não há redefinição pública sem prova de identidade nem recuperação por e-mail. Configure backups do PostgreSQL e teste sua recuperação. A exportação JSON do app continua disponível; nunca envie backups financeiros para este repositório público.
+
+## Local e verificação
 npm ci
 npm test
 npm run build
-Copie .env.example para .env.local e preencha suas variáveis localmente antes de npm run dev.
+Copie .env.example para .env.local e configure DATABASE_URL e APP_ORIGIN antes de npm run dev.
 
-## Segurança e backup
-API usa consultas parametrizadas e comparação de revisão para impedir que duas abas sobrescrevam alterações. Registros históricos e campos opcionais são preservados. Configure backups do serviço db para um destino de armazenamento seu e teste a recuperação. A cópia JSON no app continua disponível.
-
-## Login privado
-Sessões aleatórias de 256 bits ficam em cookies HttpOnly, Secure e SameSite=Strict em produção. Apenas o hash do token é armazenado no PostgreSQL. Expiram após 30 minutos sem requisições autenticadas ou 8 horas desde o login. Sair revoga a sessão no servidor; alterar APP_USERNAME ou APP_PASSWORD invalida as sessões do proprietário. A API rejeita salvamentos sem sessão e sem Origin exato correspondente ao APP_ORIGIN. Tentativas de login são limitadas no banco: 10 por IP e 60 globais a cada 15 minutos. O último endereço X-Forwarded-For deve ser inserido pelo proxy confiável; mantenha a porta 3000 interna.
-
-Não há recuperação por e-mail. Redefina a senha no Environment do EasyPanel e faça redeploy. Não compartilhe a credencial do proprietário. Os cabeçalhos incluem CSP com nonce, proteção contra frames, HSTS e no-store. Tokens não ficam no localStorage. Os campos não salvos permanecem disponíveis se a sessão expirar: entre em outra aba e tente salvar novamente.
-
-## Cadastro e usuários
-/register cria uma conta com nome, usuário único (3–32 caracteres) e senha confirmada (16–128 caracteres). O usuário é normalizado para minúsculas. O proprietário existente allex é cadastrado automaticamente como id owner e continua usando a senha APP_PASSWORD. Seus registros existentes permanecem no portfolio owner. Novos usuários recebem UUID e portfólio independente, sem contas nem fechamentos pessoais. As senhas cadastradas usam scrypt com salt aleatório (N=32768, r=8, p=3). Nunca são armazenadas em texto puro.
-
-Toda leitura e escrita financeira usa exclusivamente o user_id da sessão validada no servidor. X-Account-ID apenas detecta uma troca de conta entre abas; nunca concede acesso a outro usuário. Cadastros têm limite separado de 5 tentativas por IP e 30 globais a cada 15 minutos. Troca de senha de usuários novos ainda requer suporte administrativo; não há endpoint público de redefinição sem verificação.
-
-Verificação opcional da migração e das rotas contra PostgreSQL: `node --env-file=.env.local scripts/check-registration.cjs`. Requer banco já inicializado e permissão de criar schemas. Clona apenas o portfólio owner para um schema temporário, executa 23 verificações e remove somente esse schema ao terminar. Nenhum teste altera os dados de produção. Não imprima nem compartilhe o arquivo .env.local.
+Verificações opcionais da migração e das rotas contra PostgreSQL: node --env-file=.env.local scripts/check-registration.cjs e scripts/check-account-settings.cjs. Requerem um banco já inicializado e permissão para criar schemas. Todos os usuários, credenciais e escritas de teste ficam em schemas temporários; o portfólio owner é copiado somente para comparação. Os schemas são removidos ao terminar. Não imprima nem compartilhe .env.local.

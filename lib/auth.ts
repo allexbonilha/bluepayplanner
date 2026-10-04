@@ -1,25 +1,31 @@
 import {randomUUID} from 'node:crypto';
-import {query} from './database';
-import {configured,credentialVersion,sessionHash,createSessionToken,IDLE_SECONDS,ABSOLUTE_SECONDS,requestToken,verifyCredentials} from './security';
+import {query,transaction} from './database';
+import {legacyCredentialsConfigured,sessionHash,createSessionToken,IDLE_SECONDS,ABSOLUTE_SECONDS,requestToken} from './security';
 import {hashPassword,verifyPassword,normalizeUsername} from './user-security';
 export type User={id:string;username:string;name:string;password_hash:string|null};
 export type UserProfile=Pick<User,'id'|'username'|'name'>;
 export const profile=(user:User):UserProfile=>({id:user.id,username:user.username,name:user.name});
 let schema:Promise<void>|undefined;
 export function authSchema(){return schema??= (async()=>{
- if(!configured(process.env))throw new Error('Owner credentials required');
  await query(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), CONSTRAINT member_password CHECK (id='owner' OR password_hash IS NOT NULL))`);
- await query(`INSERT INTO users(id,username,name,password_hash) VALUES('owner',$1,'Allex',NULL) ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username WHERE users.username<>EXCLUDED.username`,[normalizeUsername(process.env.APP_USERNAME!)]);
+ await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS credential_revision INTEGER NOT NULL DEFAULT 0`);
+ // One-time compatibility migration. Once a database hash exists, environment credentials never override it.
+ const legacyOwner=(await query(`SELECT password_hash FROM users WHERE id='owner'`)).rows[0];
+ if(!legacyOwner?.password_hash&&legacyCredentialsConfigured(process.env)){
+  const passwordHash=await hashPassword(process.env.APP_PASSWORD!);
+  if(legacyOwner)await query(`UPDATE users SET password_hash=$1 WHERE id='owner' AND password_hash IS NULL`,[passwordHash]);
+  else await query(`INSERT INTO users(id,username,name,password_hash) VALUES('owner',$1,'Allex',$2) ON CONFLICT(id) DO NOTHING`,[normalizeUsername(process.env.APP_USERNAME!),passwordHash]);
+ }
  await query(`CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, credential_version TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)`);
  await query(`ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT 'owner' REFERENCES users(id) ON DELETE CASCADE`);
  await query(`CREATE INDEX IF NOT EXISTS auth_sessions_user_idx ON auth_sessions(user_id)`);
  await query(`CREATE TABLE IF NOT EXISTS auth_limits (bucket TEXT PRIMARY KEY, attempts INTEGER NOT NULL, reset_at TIMESTAMPTZ NOT NULL)`);
 })().catch(error=>{schema=undefined;throw error;});}
-function userVersion(user:User){return user.id==='owner'?credentialVersion(process.env):sessionHash(user.password_hash!);}
+function userVersion(user:User){return sessionHash(JSON.stringify([user.username,user.password_hash]));}
 export async function findUser(username:string):Promise<User|null>{await authSchema();const result=await query('SELECT id,username,name,password_hash FROM users WHERE username=$1',[normalizeUsername(username)]);return result.rows[0]||null;}
 export async function loginUser(username:string,password:string):Promise<User|null>{
  const user=await findUser(username);
- const valid=user?.id==='owner'?await verifyCredentials(process.env.APP_USERNAME!,password,process.env):await verifyPassword(password,user?.password_hash||null);
+ const valid=await verifyPassword(password,user?.password_hash||null);
  return user&&valid?user:null;
 }
 export async function registerUser(input:{name:string;username:string;password:string}):Promise<User>{
@@ -27,7 +33,7 @@ export async function registerUser(input:{name:string;username:string;password:s
  const result=await query('INSERT INTO users(id,username,name,password_hash) VALUES($1,$2,$3,$4) RETURNING id,username,name,password_hash',[randomUUID(),input.username,input.name,passwordHash]);return result.rows[0];
 }
 export async function sessionUser(token:string|null):Promise<UserProfile|null>{
- if(!configured(process.env)||!token||!/^[a-f0-9]{64}$/.test(token))return null;
+ if(!token||!/^[a-f0-9]{64}$/.test(token))return null;
  await authSchema();const tokenHash=sessionHash(token);
  const result=await query(`SELECT u.id,u.username,u.name,u.password_hash,s.credential_version FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>NOW() AND s.last_seen_at>NOW()-($2 * INTERVAL '1 second')`,[tokenHash,IDLE_SECONDS]);
  const user=result.rows[0] as (User&{credential_version:string})|undefined;if(!user)return null;
@@ -42,7 +48,21 @@ export async function newSession(user:User,oldToken:string|null){
  const token=createSessionToken();await query(`INSERT INTO auth_sessions(token_hash,credential_version,user_id,expires_at) VALUES($1,$2,$3,NOW()+($4 * INTERVAL '1 second'))`,[sessionHash(token),userVersion(user),user.id,ABSOLUTE_SECONDS]);return token;
 }
 export async function revokeSession(token:string|null){if(!token)return;await authSchema();await query('DELETE FROM auth_sessions WHERE token_hash=$1',[sessionHash(token)]);}
-export async function reserveLogin(request:Request,kind:'login'|'register'='login'){
+export class AccountChangeError extends Error{constructor(message:string,public status:number){super(message);}}
+export async function changeAccount(userId:string,input:{name:string;username:string;currentPassword:string;newPassword:string}){
+ await authSchema();const user=(await query('SELECT id,username,name,password_hash,credential_revision FROM users WHERE id=$1',[userId])).rows[0] as (User&{credential_revision:number})|undefined;
+ if(!await verifyPassword(input.currentPassword,user?.password_hash||null)||!user)throw new AccountChangeError('A senha atual não confere.',403);
+ const passwordHash=input.newPassword?await hashPassword(input.newPassword):user.password_hash;
+ const token=createSessionToken();
+ return transaction(async client=>{
+  let result;try{result=await client.query('UPDATE users SET name=$1,username=$2,password_hash=$3,credential_revision=credential_revision+1 WHERE id=$4 AND username=$5 AND password_hash=$6 AND credential_revision=$7 RETURNING id,username,name,password_hash',[input.name,input.username,passwordHash,user.id,user.username,user.password_hash,user.credential_revision]);}catch(error){if((error as {code?:string}).code==='23505')throw new AccountChangeError('Esse usuário já está em uso. Escolha outro.',409);throw error;}
+  const updated=result.rows[0] as User|undefined;if(!updated)throw new AccountChangeError('Seu acesso foi alterado em outra aba. Entre novamente antes de continuar.',409);
+  await client.query('DELETE FROM auth_sessions WHERE user_id=$1',[user.id]);
+  await client.query(`INSERT INTO auth_sessions(token_hash,credential_version,user_id,expires_at) VALUES($1,$2,$3,NOW()+($4 * INTERVAL '1 second'))`,[sessionHash(token),userVersion(updated),updated.id,ABSOLUTE_SECONDS]);
+  return {user:profile(updated),token};
+ });
+}
+export async function reserveLogin(request:Request,kind:'login'|'register'|'account'='login'){
  await authSchema();await query('DELETE FROM auth_limits WHERE reset_at<NOW()');
  const ip=request.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim()||'unknown';
  for(const [bucket,limit] of [[kind+':ip:'+sessionHash(ip),kind==='register'?5:10],[kind+':global',kind==='register'?30:60]] as const){
