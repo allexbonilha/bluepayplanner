@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),ts=require('typescript');
 const {Pool}=require('pg'),vm=require('node:vm'),crypto=require('node:crypto'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..'),sources={};
 const options={compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}};
-for(const name of ['database','security','user-security','auth','portfolio-store','request-body','finance','life'])sources['./'+name]=ts.transpileModule(fs.readFileSync(path.join(root,'lib',name+'.ts'),'utf8'),options).outputText;
+for(const name of ['database','security','user-security','auth','recovery','portfolio-store','request-body','finance','life'])sources['./'+name]=ts.transpileModule(fs.readFileSync(path.join(root,'lib',name+'.ts'),'utf8'),options).outputText;
 for(const [name,file] of Object.entries({'route-register':'auth/register','route-login':'auth/login','route-portfolio':'portfolio','route-logout':'auth/logout','route-account':'auth/account'}))sources['./'+name]=ts.transpileModule(fs.readFileSync(path.join(root,'app/api',file,'route.ts'),'utf8'),options).outputText;
 (async()=>{
  const schema='account_test_'+crypto.randomBytes(10).toString('hex');
@@ -64,6 +64,20 @@ for(const [name,file] of Object.entries({'route-register':'auth/register','route
   const parallel=await Promise.allSettled([auth.changeAccount(latest.id,{name:'Parallel One',username:latest.username,currentPassword:newPassword,newPassword:''}),auth.changeAccount(latest.id,{name:'Parallel Two',username:latest.username,currentPassword:newPassword,newPassword:''})]);
   check(parallel.filter(r=>r.status==='fulfilled').length===1&&parallel.filter(r=>r.status==='rejected'&&r.reason.status===409).length===1,'concurrent name-only changes cannot revoke winning response session');
   const winner=parallel.find(r=>r.status==='fulfilled').value;check((await auth.sessionUser(winner.token))?.id===latest.id,'winning concurrent change leaves usable session');
+  const recovery=load('./recovery');await recovery.recoverySchema();
+  const mint=async(userId,minutes=30)=>{const token=crypto.randomBytes(32).toString('hex');await setup.query(`INSERT INTO password_recovery(token_hash,user_id,credential_revision,expires_at) SELECT $1,id,credential_revision,NOW()+($3*INTERVAL '1 minute') FROM users WHERE id=$2`,[load('./security').sessionHash(token),userId,minutes]);return token;};
+  const recoveredPassword='isolated-recovered-password-8910';
+  const recoveryBody=token=>({token,username:'recovered-owner',password:recoveredPassword,confirmation:recoveredPassword,userId:userB.id});
+  await assert.rejects(()=>recovery.recoverAccount(recoveryBody('0'.repeat(64))));check(true,'unknown recovery token rejected');
+  const expiredToken=await mint('owner',-1);await assert.rejects(()=>recovery.recoverAccount(recoveryBody(expiredToken)));check(true,'expired recovery token rejected');
+  const resetToken=await mint('owner');
+  await assert.rejects(()=>recovery.recoverAccount({...recoveryBody(resetToken),confirmation:'wrong'}));check(true,'recovery requires matching strong password');
+  const resetRace=await Promise.allSettled([recovery.recoverAccount(recoveryBody(resetToken)),recovery.recoverAccount(recoveryBody(resetToken))]);
+  check(resetRace.filter(x=>x.status==='fulfilled').length===1,'recovery token consumed exactly once under concurrency');
+  check((await auth.loginUser('recovered-owner',recoveredPassword))?.id==='owner'&&await auth.loginUser('allexbonilha',newPassword)===null,'recovery updates original owner only');
+  await assert.rejects(()=>recovery.recoverAccount(recoveryBody(resetToken)));check(true,'used recovery token cannot replay');
+  assert.deepEqual((await store.read('owner')).state,original.data);check((await store.read('owner')).revision===original.revision,'recovery preserves original portfolio');
+  check(await auth.sessionUser((response.headers.get('set-cookie')||'').split(';')[0].split('=')[1])===null,'recovery revokes owner sessions');
   console.log('ACCOUNT_SETTINGS_ISOLATED_PASSED '+checks);
  }finally{
   if(globalThis.plannerPool){await globalThis.plannerPool.end();delete globalThis.plannerPool;}
