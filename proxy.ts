@@ -1,3 +1,11 @@
-import {NextResponse,type NextRequest} from 'next/server';import {checkAccess} from './lib/security';
-export function proxy(request:NextRequest){const access=checkAccess(request.headers.get('authorization'),process.env);if(access==='authorized')return NextResponse.next();return new NextResponse(access==='unconfigured'?'O acesso privado ainda precisa ser configurado no EasyPanel.':'Acesso privado',{status:access==='unconfigured'?503:401,headers:{'WWW-Authenticate':'Basic realm="BluePay Planner", charset="UTF-8"','Cache-Control':'no-store'}});}
-export const config={matcher:['/((?!api/health$).*)']};
+import {randomBytes} from 'node:crypto';
+import {NextResponse,type NextRequest} from 'next/server';
+export function proxy(request:NextRequest){
+ const nonce=randomBytes(16).toString('base64');
+ const csp=`default-src 'self'; script-src 'self' 'nonce-${nonce}'${process.env.NODE_ENV==='production'?" 'strict-dynamic'":" 'unsafe-eval'"}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`;
+ const headers=new Headers(request.headers);headers.set('Content-Security-Policy',csp);headers.set('x-nonce',nonce);
+ const response=NextResponse.next({request:{headers}});response.headers.set('Content-Security-Policy',csp);
+ response.headers.set('X-Content-Type-Options','nosniff');response.headers.set('X-Frame-Options','DENY');response.headers.set('Referrer-Policy','no-referrer');response.headers.set('Permissions-Policy','camera=(), microphone=(), geolocation=()');response.headers.set('Cache-Control','no-store, max-age=0');
+ if(process.env.NODE_ENV==='production')response.headers.set('Strict-Transport-Security','max-age=31536000');return response;
+}
+export const config={matcher:['/((?!_next/static|_next/image|favicon.ico).*)']};

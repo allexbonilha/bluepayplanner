@@ -9,7 +9,7 @@
     "dev": "next dev --webpack -H 127.0.0.1 -p 5174",
     "build": "next build --webpack",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "test": "node --experimental-strip-types --test tests/finance.test.ts tests/investment.test.ts tests/tracking.test.ts tests/life.test.ts tests/monthly-flow.test.ts tests/security.test.ts tests/portfolio-store.test.ts",
+    "test": "node --experimental-strip-types --test tests/finance.test.ts tests/investment.test.ts tests/tracking.test.ts tests/life.test.ts tests/monthly-flow.test.ts tests/auth.test.ts tests/portfolio-store.test.ts tests/request-body.test.ts",
     "typecheck": "tsc --noEmit --incremental false"
   },
   "dependencies": {
