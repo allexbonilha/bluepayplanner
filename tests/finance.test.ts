@@ -1,6 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cashTotal, calculateTotals, compareTotals, parseMoney, applyOperation, initialState, exportCsv } from '../lib/finance.ts';
+import { cashTotal,cashAmountsTotal, calculateTotals, compareTotals, parseMoney, applyOperation, initialState, exportCsv } from '../lib/finance.ts';
+test('valores em reais de notas e moedas somam centavos sem multiplicar pela denominação',()=>{
+ assert.equal(parseMoney('2,50'),250);assert.equal(parseMoney('2.50'),250);assert.equal(parseMoney('1.234,56'),123456);assert.equal(parseMoney('1.234'),123400);
+ assert.equal(cashAmountsTotal({'5':115,'10':110,'25':250},35),510);
+ for(const bad of [{'5':1.5},{'5':-1},{'3':100}] as Record<string,number>[])assert.throws(()=>cashAmountsTotal(bad,0));
+ assert.throws(()=>parseMoney('2,501'));assert.throws(()=>parseMoney('1.2.50'));
+});
+test('fechamento preserva valores monetários por denominação ao salvar e reabrir',()=>{
+ const amounts={'5':115,'25':250};let s=applyOperation(initialState(),{op:'saveMonth',month:'2025-08',status:'draft',entries:[{accountId:'wallet',mode:'amounts',cashAmounts:amounts,extra:35,counts:{'25':99},value:99999}]});
+ let entry=s.closings[0].entries[0];assert.equal(entry.value,400);assert.deepEqual(entry.cashAmounts,amounts);assert.equal(entry.mode,'amounts');
+ s.accounts=[s.accounts[0]];s=applyOperation(s,{op:'saveMonth',month:'2025-08',status:'closed',entries:[entry]});s=applyOperation(s,{op:'reopen',month:'2025-08'});assert.equal(s.closings[0].status,'draft');assert.deepEqual(s.closings[0].entries[0].cashAmounts,amounts);assert.equal(s.closings[0].entries[0].value,400);
+ s=applyOperation(s,{op:'saveMonth',month:'2025-08',status:'draft',entries:[{accountId:'wallet',mode:'count',counts:{'25':3},extra:0}]});assert.equal(s.closings[0].entries[0].value,75);
+ assert.throws(()=>applyOperation(initialState(),{op:'saveMonth',month:'2025-08',status:'draft',entries:[{accountId:'wallet',mode:'amounts',cashAmounts:{'5':-1}}]}));
+});
 test('investimento incompleto não inventa perda nem exporta ganho',()=>{
  assert.deepEqual(calculateTotals([{value:null,base:10000}]),{total:0,invested:10000,gain:0});
  let s=initialState();s=applyOperation(s,{op:'saveMonth',month:'2025-08',status:'draft',entries:[{accountId:'nu-fixed',value:null,base:10000}],note:''});
