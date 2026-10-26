@@ -1,0 +1,7 @@
+import {parseMoney,inputMoney} from './finance.ts';
+import type {PrintInput} from './printing.ts';
+export type Draft=Record<keyof PrintInput,string> & {hours:string;remainingMinutes:string};
+const moneyKeys=new Set(['printerHourly','filamentKg','laborHourly','packaging','other','salePrice']);
+export function toDraft(input:PrintInput):Draft{const d:any={};for(const [k,v] of Object.entries(input))d[k]=moneyKeys.has(k)?inputMoney(v as number|null):(typeof v==='number'?String(v).replace('.',','):String(v??''));d.hours=String(Math.floor(input.minutes/60));d.remainingMinutes=String(Math.round((input.minutes%60)*1000)/1000).replace('.',',');return d;}
+function number(raw:string){const s=raw.trim().replace(',','.');if(!s)return 0;if(!/^\d+(?:\.\d{1,3})?$/.test(s))throw new Error('Use números positivos com vírgula ou ponto.');return Number(s);}
+export function parse(d:Draft):PrintInput{const result:any={...d};for(const key of moneyKeys)result[key]=parseMoney(d[key as keyof Draft])??(key==='salePrice'?null:0);for(const key of ['grams','quantity','laborMinutes','taxPercent','feePercent','lossPercent','targetPercent'])result[key]=number(d[key as keyof Draft]);const hours=number(d.hours),minutes=number(d.remainingMinutes);if(minutes>=60)throw new Error('No campo minutos, use um valor menor que 60.');result.minutes=Math.round((hours*60+minutes)*1000)/1000;delete result.hours;delete result.remainingMinutes;return result;}
