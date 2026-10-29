@@ -1,4 +1,4 @@
-import {applyPrintOperation,type PrintSettings,type PrintProject} from './printing.ts';
+import {applyPrintOperation,type PrintSettings,type PrintProfiles,type PrintProject} from './printing.ts';
 import {applyLifeOperation,lifeOperations,type Transaction,type SpendingCategory,type Budget} from './life.ts';
 export type AccountType='balance'|'investment'|'cash';
 export type Category={id:string;name:string;color:string};
@@ -8,7 +8,7 @@ export type BalanceInput={value:number|null;base:number|null;investmentMode?:Inv
 export type Entry=BalanceInput & {accountId:string;name:string;categoryId:string;categoryName:string;categoryColor:string;type:AccountType;counts:Record<string,number>;extra:number;mode:'direct'|'count'|'amounts';cashAmounts?:Record<string,number>;deposit:number;withdrawal:number};
 export type Closing={month:string;status:'draft'|'closed';entries:Entry[];note:string;updatedAt:string;flow?:{income:number|null;expense:number|null}};
 export type Goal={id:string;name:string;target:number;accountId:string|null;deadline:string|null};
-export type PortfolioState={printSettings?:PrintSettings;printProjects?:PrintProject[];categories:Category[];accounts:Account[];closings:Closing[];goals?:Goal[];transactions?:Transaction[];spendingCategories?:SpendingCategory[];budgets?:Budget[]};
+export type PortfolioState={printSettings?:PrintSettings;printProfiles?:PrintProfiles;printProjects?:PrintProject[];categories:Category[];accounts:Account[];closings:Closing[];goals?:Goal[];transactions?:Transaction[];spendingCategories?:SpendingCategory[];budgets?:Budget[]};
 export type Totals={total:number;invested:number;gain:number};
 export type Comparison={difference:number|null;percent:number|null};
 export const denominations=[20000,10000,5000,2000,1000,500,200,100,50,25,10,5];
@@ -28,7 +28,7 @@ export function compareTotals(n:number,prev:number|null):Comparison{return {diff
 export function initialState():PortfolioState{return {categories:[{id:'cash',name:'Dinheiro físico',color:'#e4a33c'},{id:'bank',name:'Contas',color:'#2184d8'},{id:'invest',name:'Investimentos',color:'#00a57b'}],accounts:[{id:'wallet',name:'Carteira',categoryId:'cash',type:'cash',archived:false},{id:'nubank',name:'Nubank',categoryId:'bank',type:'balance',archived:false},{id:'mp',name:'Mercado Pago',categoryId:'bank',type:'balance',archived:false},{id:'nu-fixed',name:'Nubank · Renda fixa',categoryId:'invest',type:'investment',archived:false},{id:'nu-btc',name:'Nubank · Bitcoin',categoryId:'invest',type:'investment',archived:false},{id:'mp-btc',name:'Mercado Pago · Bitcoin',categoryId:'invest',type:'investment',archived:false}],closings:[]};}
 const name=(x:unknown)=>{if(typeof x!=='string'||!x.trim()||x.trim().length>80)throw new Error('Informe um nome de até 80 caracteres.');return x.trim();};
 export function applyOperation(source:PortfolioState,op:any):PortfolioState{const s=structuredClone(source);if(!op||typeof op.op!=='string')throw new Error('Operação inválida.');
-if(['printProject','printSettings','printArchive'].includes(op.op))return applyPrintOperation(s,op);
+if(['printProject','printSettings','printProfiles','printArchive'].includes(op.op))return applyPrintOperation(s,op);
 if(lifeOperations.has(op.op))return applyLifeOperation(s,op);
 if(op.op==='category'){const n=name(op.name),color=/^#[a-f0-9]{6}$/i.test(op.color)?op.color:'#2184d8';if(op.id){const c=s.categories.find(c=>c.id===op.id);if(!c)throw new Error('Categoria não encontrada.');Object.assign(c,{name:n,color});}else{if(s.categories.length>=100)throw new Error('Limite de categorias atingido.');s.categories.push({id:crypto.randomUUID(),name:n,color});}}
 else if(op.op==='account'){const n=name(op.name);if(!s.categories.some(c=>c.id===op.categoryId))throw new Error('Selecione uma categoria.');if(!['balance','cash','investment'].includes(op.type))throw new Error('Tipo inválido.');if(op.id){const a=s.accounts.find(a=>a.id===op.id);if(!a)throw new Error('Conta não encontrada.');if(a.type!==op.type&&s.closings.some(c=>c.entries.some(e=>e.accountId===a.id)))throw new Error('Contas com histórico conservam seu tipo. Crie outra conta.');Object.assign(a,{name:n,categoryId:op.categoryId,type:op.type});}else{if(s.accounts.length>=300)throw new Error('Limite de contas atingido.');s.accounts.push({id:crypto.randomUUID(),name:n,categoryId:op.categoryId,type:op.type,archived:false});}}
