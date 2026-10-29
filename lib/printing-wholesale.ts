@@ -1,0 +1,23 @@
+export type WholesaleHealth='healthy'|'below-target'|'break-even'|'loss';
+export type WholesaleInput={quantity:number;discountPercent:number;costMode:'batches'|'proportional'};
+export type WholesaleBase={quantity:number;cost:number;price:number;taxPercent:number;feePercent:number;pricing:'margin'|'markup';targetPercent:number};
+const valid=(n:unknown,max:number,integer=false)=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=max&&(!integer||Number.isSafeInteger(n));
+export function validateWholesaleInput(raw:unknown):WholesaleInput{if(!raw||typeof raw!=='object')throw new Error('Simulação de atacado inválida.');const v=raw as WholesaleInput;if(!valid(v.quantity,100000,true)||v.quantity<1)throw new Error('Informe uma quantidade inteira de 1 a 100.000 produtos.');if(!valid(v.discountPercent,100)||Math.abs(v.discountPercent*100-Math.round(v.discountPercent*100))>1e-7)throw new Error('O desconto deve ser de 0 a 100%, com até duas casas decimais.');if(!['batches','proportional'].includes(v.costMode))throw new Error('Escolha como estimar o custo do pedido.');return {quantity:v.quantity,discountPercent:v.discountPercent,costMode:v.costMode};}
+const ceilDivide=(n:bigint,d:bigint)=>(n+d-BigInt(1))/d;
+const bounded=(n:bigint)=>{if(n>BigInt(1000000000000))throw new Error('Valor do pedido fora do limite permitido.');return Number(n);};
+export function calculateWholesale(base:WholesaleBase,raw:WholesaleInput){
+ const v=validateWholesaleInput(raw);
+ if(!valid(base.quantity,100000,true)||!base.quantity||!valid(base.cost,1e12,true)||!base.cost||!valid(base.price,1e12,true))throw new Error('Informe um custo positivo e uma quantidade válida no projeto antes de simular.');
+ if(!valid(base.taxPercent,99.99)||!valid(base.feePercent,99.99)||!valid(base.targetPercent,1000)||!['margin','markup'].includes(base.pricing)||base.taxPercent+base.feePercent+(base.pricing==='margin'?base.targetPercent:0)>=100)throw new Error('Confira os impostos, taxas e meta de ganho do projeto.');
+ const q=BigInt(v.quantity),baseQ=BigInt(base.quantity),batches=v.costMode==='batches'?Math.ceil(v.quantity/base.quantity):v.quantity/base.quantity;
+ const cost=bounded(v.costMode==='batches'?BigInt(base.cost)*BigInt(batches):ceilDivide(BigInt(base.cost)*q,baseQ));
+ const bps=BigInt(Math.round(v.discountPercent*100));
+ const unitPrice=bounded(BigInt(base.price)*(BigInt(10000)-bps)/(baseQ*BigInt(10000))),price=bounded(BigInt(unitPrice)*q),referencePrice=bounded(BigInt(base.price)*q/baseQ);
+ const deductions=(total:number)=>{const tax=Math.round(total*base.taxPercent/100),fees=Math.round(total*base.feePercent/100);return {tax,fees,profit:total-cost-tax-fees};};
+ const {tax,fees,profit}=deductions(price),marginPercent=price?profit/price*100:null;
+ const meetsTarget=(p:number,earnings:number)=>earnings+1e-7>=(base.pricing==='margin'?p*base.targetPercent/100:cost*base.targetPercent/100);
+ const health:WholesaleHealth=profit<0?'loss':profit===0?'break-even':meetsTarget(price,profit)?'healthy':'below-target';
+ function safeUnitPrice(target:boolean){const d=1-(base.taxPercent+base.feePercent+(target&&base.pricing==='margin'?base.targetPercent:0))/100;let unit=Math.ceil(cost*(target&&base.pricing==='markup'?1+base.targetPercent/100:1)/d/v.quantity);for(let i=0;i<100;i++){const total=unit*v.quantity;if(!Number.isSafeInteger(total)||total>1e12)return null;const result=deductions(total),needed=target?(base.pricing==='margin'?total*base.targetPercent/100:cost*base.targetPercent/100):0;if(result.profit+1e-7>=needed)return unit;unit+=Math.max(1,Math.ceil((needed-result.profit)/d/v.quantity));}return null;}
+ function safeDiscount(target:boolean){const unit=safeUnitPrice(target);if(unit===null||base.price===0)return null;const result=BigInt(10000)-ceilDivide(BigInt(unit)*baseQ*BigInt(10000),BigInt(base.price));if(result<BigInt(0))return null;for(let b=result;b>=BigInt(0);b--){const u=Number(BigInt(base.price)*(BigInt(10000)-b)/(baseQ*BigInt(10000))),total=u*v.quantity,earnings=deductions(total).profit;if(target?meetsTarget(total,earnings):earnings>=0)return Number(b)/100;}return null;}
+ return {quantity:v.quantity,discountPercent:v.discountPercent,costMode:v.costMode,batches,producedUnits:v.costMode==='batches'?batches*base.quantity:v.quantity,extraUnits:v.costMode==='batches'?batches*base.quantity-v.quantity:0,referenceUnitPrice:base.price/base.quantity,referencePrice,unitPrice,price,cost,unitCost:cost/v.quantity,tax,fees,profit,profitPerUnit:profit/v.quantity,marginPercent,health,safeDiscountToTarget:safeDiscount(true),safeDiscountToBreakEven:safeDiscount(false),discountValue:referencePrice-price,effectiveDiscountPercent:referencePrice?(1-price/referencePrice)*100:null};
+}
