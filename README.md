@@ -45,3 +45,5 @@ A simulação de atacado recebe quantidade e desconto sobre o preço normal por 
 
 ## Organização das contas
 Cada conta permite cadastrar banco/instituição e titularidade PF ou PJ. Contas antigas usam PF como padrão de exibição; Nubank e Mercado Pago são reconhecidos pelo nome até o banco ser editado. O agrupamento por banco (PF antes de PJ) ou por titularidade fica dentro das categorias. A classificação atual aparece no cadastro, fechamento, visão mensal e histórico: PF azul e PJ verde. Alterar essa classificação não modifica valores ou nomes históricos dos fechamentos.
+
+A visão mensal e o fechamento mostram os totais de PF, PJ, consolidado e de cada banco, com divisão PF/PJ por instituição. No fechamento as somas acompanham os saldos digitados. Entradas ausentes ou inválidas são indicadas como parciais; zero informado e saldos negativos de contas simples são válidos. O cálculo usa somente o valor atual de cada conta, sem somar o capital aplicado novamente, e a classificação atual de banco/PF/PJ. Dinheiro físico e contas sem banco formam um grupo próprio. Apenas contas presentes no mês entram no consolidado.

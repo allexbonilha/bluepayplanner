@@ -52,7 +52,7 @@ test('CSV protege fórmulas e escapa nomes',()=>{
  assert.match(exportCsv(s),/'=SOMA/);
 });
 
-import {accountBank,accountOwnership,organizeAccounts} from '../lib/account-organization.ts';
+import {accountBalanceTotals,accountBank,accountOwnership,organizeAccounts} from '../lib/account-organization.ts';
 test('banco e PF/PJ persistem sem alterar saldos históricos e edições antigas preservam metadados',()=>{
  const initial=initialState(),s=applyOperation(initial,{op:'saveMonth',month:'2025-01',status:'closed',entries:initial.accounts.map(a=>({accountId:a.id,value:10000,base:a.type==='investment'?9000:null}))}),account=s.accounts.find(a=>a.id==='nubank')!;
  const op={op:'account',id:account.id,name:account.name,type:account.type,categoryId:account.categoryId};
@@ -67,4 +67,23 @@ test('organização agrupa banco, PF antes de PJ, sem modificar a ordem original
  const accounts=[{name:'Z',bank:'Nubank',ownership:'PJ' as const},{name:'A',bank:'Nubank',ownership:'PF' as const},{name:'C',bank:'Inter',ownership:'PJ' as const},{name:'Carteira'}];
  assert.deepEqual(organizeAccounts(accounts).map(a=>a.name),['C','A','Z','Carteira']);assert.deepEqual(accounts.map(a=>a.name),['Z','A','C','Carteira']);
  assert.deepEqual(organizeAccounts(accounts,'ownership').map(a=>a.name),['A','Carteira','C','Z']);
+});
+
+test('totais PF/PJ e por banco incluem saldos negativos e investimentos uma única vez',()=>{
+ const accounts=[{id:'pf',name:'Conta pessoal',bank:'Nubank',ownership:'PF' as const},{id:'pj',name:'Empresa',bank:' nubank ',ownership:'PJ' as const},{id:'inv',name:'Investimento',bank:'Inter',ownership:'PF' as const},{id:'cash',name:'Carteira'}];
+ const entries=[{accountId:'pf',name:'Pessoal',value:10000},{accountId:'pj',name:'Empresa',value:-2000},{accountId:'inv',name:'Investimento',value:35000,base:30000},{accountId:'cash',name:'Carteira',value:500}];
+ const before=structuredClone({accounts,entries}),t=accountBalanceTotals(entries,accounts);
+ assert.equal(t.pf.value,45500);assert.equal(t.pj.value,-2000);assert.equal(t.total.value,43500);assert.equal(t.pf.value+t.pj.value,t.total.value);
+ assert.equal(t.banks.length,3);assert.equal(t.banks.find(b=>b.key==='nubank')!.total.value,8000);assert.equal(t.banks.reduce((sum,b)=>sum+b.total.value,0),t.total.value);assert.equal(t.banks.at(-1)!.key,'');assert.deepEqual({accounts,entries},before);
+});
+test('totais diferenciam zero de saldo ausente ou inválido e não incluem contas fora do mês',()=>{
+ const accounts=[{id:'a',name:'A',bank:'Nubank',ownership:'PF' as const},{id:'b',name:'B',bank:'Nubank',ownership:'PJ' as const},{id:'c',name:'Nova conta',bank:'Inter'}];
+ const t=accountBalanceTotals([{accountId:'a',name:'A',value:0},{accountId:'b',name:'B',value:null}],accounts);
+ assert.deepEqual(t.pf,{value:0,count:1,missing:0});assert.deepEqual(t.pj,{value:0,count:1,missing:1});assert.equal(t.total.count,2);assert.equal(t.total.missing,1);assert.equal(t.banks.length,1);
+ for(const value of [NaN,Infinity,1.5])assert.equal(accountBalanceTotals([{accountId:'a',name:'A',value}],accounts).total.missing,1);
+ assert.deepEqual(accountBalanceTotals([],accounts).total,{value:0,count:0,missing:0});
+});
+test('totais usam classificação atual mesmo com nome histórico e preservam conta antiga ausente do cadastro',()=>{
+ const t=accountBalanceTotals([{accountId:'old',name:'Nome antigo',value:900},{accountId:'missing',name:'Mercado Pago antigo',value:100}], [{id:'old',name:'Conta nova',bank:'Banco novo',ownership:'PJ'}]);
+ assert.equal(t.pj.value,900);assert.equal(t.pf.value,100);assert.equal(t.banks.find(b=>b.key==='banco novo')!.total.value,900);assert.equal(t.banks.find(b=>b.key==='mercado pago')!.total.value,100);
 });
