@@ -25,3 +25,15 @@ test('conferência identifica lacunas e rascunhos sem exigir contas atuais em sn
  const h=recordHealth(s,'2025-04');assert.deepEqual(h.missingMonths,['2025-02']);assert.equal(h.drafts.length,1);assert.equal(h.closedCount,2);assert.equal(h.incompleteEntries.length,0);
  s.closings[0].entries[0].value=null;assert.equal(recordHealth(s,'2025-04').incompleteEntries.length,1);
 });
+import {goalForecast} from '../lib/finance.ts';
+test('previsão usa aumento mensal em reais e intervalo real, incluindo meses de queda',()=>{
+ const s=history();s.closings[0].entries.forEach(e=>e.value=5000);
+ const p=goalForecast(s,goal);assert.equal(p.averageMonthlyIncrease,15000);assert.equal(p.monthsToGoal,3);assert.equal(p.estimatedMonth,'2025-06');assert.equal(p.elapsedMonths,2);
+ assert.equal(goalForecast(s,{...goal,accountId:'wallet',target:20000}).estimatedMonth,'2025-07');
+ s.closings.push({...structuredClone(s.closings[1]),month:'2025-04',status:'draft'});assert.equal(goalForecast(s,goal).sampleCount,2);
+ s.closings[0].entries.forEach(e=>e.value=12000);assert.equal(goalForecast(s,goal).monthsToGoal,null);
+ s.closings[0].entries.forEach(e=>e.value=10000);assert.equal(goalForecast(s,goal).averageMonthlyIncrease,0);assert.equal(goalForecast(s,goal).estimatedMonth,null);
+ assert.equal(goalForecast(s,{...goal,target:50000}).monthsToGoal,0);
+ s.closings=s.closings.slice(0,1);assert.equal(goalForecast(s,goal).averageMonthlyIncrease,null);
+ assert.equal(goalForecast(initialState(),goal).estimatedMonth,null);
+});

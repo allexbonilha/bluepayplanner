@@ -61,6 +61,16 @@ export function goalProgress(s:PortfolioState,g:Goal){
  const remaining=value===null?null:Math.max(0,g.target-value),monthsLeft=closing&&g.deadline?monthDistance(closing.month,g.deadline):null;
  return {value,month:closing?.month??null,percent:value===null?null:Math.max(0,value/g.target*100),remaining,monthsLeft,monthlyNeeded:remaining!==null&&monthsLeft!==null&&monthsLeft>0?Math.ceil(remaining/monthsLeft):null};
 }
+export function goalForecast(s:PortfolioState,g:Goal){
+ const progress=goalProgress(s,g);
+ const samples=s.closings.filter(c=>c.status==='closed').map(c=>({month:c.month,value:g.accountId===null?(c.entries.length&&c.entries.every(e=>e.value!==null)?calculateTotals(c.entries).total:null):c.entries.find(e=>e.accountId===g.accountId)?.value??null})).filter((c):c is {month:string;value:number}=>c.value!==null).sort((a,b)=>a.month.localeCompare(b.month));
+ const first=samples[0],last=samples.at(-1),elapsed=first&&last?monthDistance(first.month,last.month):0;
+ const averageMonthlyIncrease=elapsed>0?(last!.value-first.value)/elapsed:null;
+ const monthsToGoal=progress.remaining===0?0:progress.remaining!==null&&averageMonthlyIncrease!==null&&averageMonthlyIncrease>0?Math.ceil(progress.remaining/averageMonthlyIncrease):null;
+ let estimatedMonth:string|null=null;
+ if(monthsToGoal!==null&&progress.month){const [year,month]=progress.month.split('-').map(Number),index=year*12+month-1+monthsToGoal;if(Number.isSafeInteger(index)&&index<120000)estimatedMonth=String(Math.floor(index/12)).padStart(4,'0')+'-'+String(index%12+1).padStart(2,'0');}
+ return {averageMonthlyIncrease,monthsToGoal,estimatedMonth,sampleCount:samples.length,elapsedMonths:elapsed,fromMonth:first?.month??null,toMonth:last?.month??null};
+}
 export function recordHealth(s:PortfolioState,through=previousMonth()){
  const sorted=[...s.closings].sort((a,b)=>a.month.localeCompare(b.month)),closed=sorted.filter(c=>c.status==='closed'),missingMonths:string[]=[];
  const first=sorted.find(c=>c.month<=through)?.month;
