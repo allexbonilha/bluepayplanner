@@ -51,3 +51,20 @@ test('CSV protege fórmulas e escapa nomes',()=>{
  s=applyOperation(s,{op:'saveMonth',month:'2025-08',status:'draft',entries:[{accountId:s.accounts[0].id,value:10000,base:null,counts:{},extra:0,mode:'direct'}],note:''});
  assert.match(exportCsv(s),/'=SOMA/);
 });
+
+import {accountBank,accountOwnership,organizeAccounts} from '../lib/account-organization.ts';
+test('banco e PF/PJ persistem sem alterar saldos históricos e edições antigas preservam metadados',()=>{
+ const initial=initialState(),s=applyOperation(initial,{op:'saveMonth',month:'2025-01',status:'closed',entries:initial.accounts.map(a=>({accountId:a.id,value:10000,base:a.type==='investment'?9000:null}))}),account=s.accounts.find(a=>a.id==='nubank')!;
+ const op={op:'account',id:account.id,name:account.name,type:account.type,categoryId:account.categoryId};
+ const n=applyOperation(s,{...op,bank:' Nubank ',ownership:'PJ'});
+ assert.equal(n.accounts.find(a=>a.id===account.id)!.bank,'Nubank');assert.equal(n.accounts.find(a=>a.id===account.id)!.ownership,'PJ');assert.deepEqual(n.closings,s.closings);assert.equal(account.ownership,undefined);
+ const edited=applyOperation(n,{...op,name:'Conta empresa'});assert.equal(edited.accounts.find(a=>a.id===account.id)!.ownership,'PJ');assert.equal(edited.accounts.find(a=>a.id===account.id)!.bank,'Nubank');
+ for(const patch of [{ownership:'XX'},{ownership:null},{bank:123},{bank:'x'.repeat(81)}])assert.throws(()=>applyOperation(s,{...op,...patch}));
+ assert.equal(accountBank(account),'Nubank');assert.equal(accountOwnership(account),'PF');assert.equal(accountBank({...account,bank:''}),'');
+ const fresh=applyOperation(s,{op:'account',name:'Outra conta',type:'balance',categoryId:'bank'});assert.equal(fresh.accounts.at(-1)!.ownership,'PF');
+});
+test('organização agrupa banco, PF antes de PJ, sem modificar a ordem original',()=>{
+ const accounts=[{name:'Z',bank:'Nubank',ownership:'PJ' as const},{name:'A',bank:'Nubank',ownership:'PF' as const},{name:'C',bank:'Inter',ownership:'PJ' as const},{name:'Carteira'}];
+ assert.deepEqual(organizeAccounts(accounts).map(a=>a.name),['C','A','Z','Carteira']);assert.deepEqual(accounts.map(a=>a.name),['Z','A','C','Carteira']);
+ assert.deepEqual(organizeAccounts(accounts,'ownership').map(a=>a.name),['A','Carteira','C','Z']);
+});

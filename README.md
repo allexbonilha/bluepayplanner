@@ -42,3 +42,6 @@ A calculadora agora apresenta o resumo em uma faixa responsiva acima do formulá
 O catálogo deriva dos projetos salvos e exibe preços, custos, lucro e margem por produto, usando o snapshot do orçamento. Permite busca, ordenação e consulta de arquivados. Cada projeto é um item independente, sem controle de estoque.
 
 A simulação de atacado recebe quantidade e desconto sobre o preço normal por produto. Por padrão considera os lotes completos necessários; alternativamente estima custos proporcionais. Recalcula impostos e taxas sobre a venda com desconto, apresenta lucro restante, margem, desconto seguro e avaliação frente à meta do projeto. O preço unitário é arredondado para baixo no centavo. Salvar projeto guarda os parâmetros e o resultado da simulação, recalculado no servidor, sem substituir o preço normal ou registrar receitas no patrimônio.
+
+## Organização das contas
+Cada conta permite cadastrar banco/instituição e titularidade PF ou PJ. Contas antigas usam PF como padrão de exibição; Nubank e Mercado Pago são reconhecidos pelo nome até o banco ser editado. O agrupamento por banco (PF antes de PJ) ou por titularidade fica dentro das categorias. A classificação atual aparece no cadastro, fechamento, visão mensal e histórico: PF azul e PJ verde. Alterar essa classificação não modifica valores ou nomes históricos dos fechamentos.
