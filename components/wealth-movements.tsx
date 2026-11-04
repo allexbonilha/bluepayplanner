@@ -1,0 +1,7 @@
+import {wealthMovements} from '@/lib/wealth-scope';
+import {money,monthLabel,type Closing} from '@/lib/finance';
+export default function WealthMovements({before,after}:{before?:Closing;after?:Closing}){
+ if(!before||!after)return null;
+ const moves=wealthMovements(before.entries,after.entries);
+ return <section className="panel wealth-movements"><div className="section-heading"><div><h2>O que mudou neste patrimônio?</h2><p>{monthLabel(before.month)} → {monthLabel(after.month)} · contas do filtro selecionado</p></div></div><div className="wealth-movement-grid">{([{title:'Maiores aumentos de saldo',rows:moves.up,empty:'Nenhuma conta comparável aumentou.'},{title:'Maiores reduções de saldo',rows:moves.down,empty:'Nenhuma conta comparável diminuiu.'}]).map(group=><div key={group.title}><h3>{group.title}</h3>{group.rows.length?<ul>{group.rows.map(row=><li key={row.id}><span>{row.name}</span><strong>{row.delta>0?'+':''}{money(row.delta)}</strong></li>)}</ul>:<p>{group.empty}</p>}</div>)}</div>{(moves.newCount>0||moves.absentCount>0)&&<p className="wealth-scope-warning">Mudança de composição: {moves.newCount} conta(s) nova(s) e {moves.absentCount} ausente(s). Elas afetam o total, mas não recebem variação individual sem saldo nos dois meses.</p>}<small>Comparação de {moves.comparableCount} conta(s) com saldo nos dois meses. Aumentos e reduções incluem movimentações, aportes e retiradas; não representam necessariamente rendimento.</small></section>;
+}

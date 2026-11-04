@@ -87,3 +87,25 @@ test('totais usam classificação atual mesmo com nome histórico e preservam co
  const t=accountBalanceTotals([{accountId:'old',name:'Nome antigo',value:900},{accountId:'missing',name:'Mercado Pago antigo',value:100}], [{id:'old',name:'Conta nova',bank:'Banco novo',ownership:'PJ'}]);
  assert.equal(t.pj.value,900);assert.equal(t.pf.value,100);assert.equal(t.banks.find(b=>b.key==='banco novo')!.total.value,900);assert.equal(t.banks.find(b=>b.key==='mercado pago')!.total.value,100);
 });
+
+import {filterWealth,bankChoices,wealthSeries,wealthMovements,completeWealthTotal,type WealthFilter} from '../lib/wealth-scope.ts';
+test('filtros PF/PJ e banco combinam pelo cadastro atual em todo o histórico sem modificar os dados',()=>{
+ const base=initialState();let s=applyOperation(base,{op:'saveMonth',month:'2025-01',status:'closed',entries:base.accounts.map(a=>({accountId:a.id,value:10000,base:a.type==='investment'?9000:null}))});
+ s=applyOperation(s,{op:'account',id:'nubank',name:'Nome novo',categoryId:'bank',type:'balance',bank:'Banco novo',ownership:'PJ'});
+ const snapshot=structuredClone(s),f:WealthFilter={ownership:'PJ',bank:'banco novo'},n=filterWealth(s,f);
+ assert.deepEqual(n.accounts.map(a=>a.id),['nubank']);assert.deepEqual(n.closings[0].entries.map(e=>e.accountId),['nubank']);assert.equal(n.closings[0].entries[0].name,'Nubank');assert.equal(completeWealthTotal(n.closings[0].entries),10000);assert.deepEqual(s,snapshot);
+ assert.equal(filterWealth(s,{ownership:'PF',bank:'banco novo'}).closings[0].entries.length,0);
+ assert.deepEqual(filterWealth(s,{ownership:'all',bank:''}).accounts.map(a=>a.id),['wallet']);assert.equal(bankChoices(s).filter(b=>b.key==='banco novo').length,1);
+ assert.equal(completeWealthTotal([]),null);assert.equal(completeWealthTotal([{value:null}]),null);assert.equal(completeWealthTotal([{value:0}]),0);
+});
+test('trajetória preserva lacunas de mês ou de contas e ignora rascunhos',()=>{
+ const base=initialState();let s=base;for(const month of ['2025-01','2025-03'])s=applyOperation(s,{op:'saveMonth',month,status:'closed',entries:base.accounts.map(a=>({accountId:a.id,value:10000,base:a.type==='investment'?9000:null}))});
+ s=applyOperation(s,{op:'saveMonth',month:'2025-02',status:'draft',entries:[]});
+ assert.deepEqual(wealthSeries(s.closings),[{month:'2025-01',value:60000},{month:'2025-02',value:null},{month:'2025-03',value:60000}]);
+ assert.deepEqual(wealthSeries(filterWealth(s,{ownership:'PJ',bank:null}).closings).map(p=>p.value),[null,null,null]);
+});
+test('diagnóstico ordena aumentos e quedas e distingue novas contas de variação real',()=>{
+ const e=initialState();const s=applyOperation(e,{op:'saveMonth',month:'2025-01',status:'closed',entries:e.accounts.map(a=>({accountId:a.id,value:10000,base:a.type==='investment'?9000:null}))});
+ const before=s.closings[0].entries,after=structuredClone(before).slice(0,-1);after[0].value=5000;after[1].value=20000;after[2].value=12000;after.push({...after[0],accountId:'new',value:500000});
+ const m=wealthMovements(before,after);assert.deepEqual(m.up.map(v=>v.id),['nubank','mp']);assert.deepEqual(m.down.map(v=>v.id),['wallet']);assert.equal(m.newCount,1);assert.equal(m.absentCount,1);assert.equal(m.up.some(v=>v.id==='new'),false);assert.equal(m.comparableCount,5);
+});
