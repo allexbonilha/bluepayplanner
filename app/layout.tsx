@@ -3,6 +3,7 @@ import "./globals.css";
 import "./analytics.css";
 import "./goals.css";
 import "./monthly-theme.css";
+import "./monthly-report.css";
 
 
 

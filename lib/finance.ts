@@ -1,5 +1,7 @@
 import {applyPrintOperation,type PrintSettings,type PrintProfiles,type PrintProject} from './printing.ts';
 import {applyLifeOperation,lifeOperations,type Transaction,type SpendingCategory,type Budget} from './life.ts';
+import {organizationKey} from './account-organization.ts';
+import {filterWealth,completeWealthTotal} from './wealth-scope.ts';
 export type AccountType='balance'|'investment'|'cash';
 export type Category={id:string;name:string;color:string};
 export type Account={id:string;name:string;categoryId:string;type:AccountType;archived:boolean;bank?:string;ownership?:'PF'|'PJ'};
@@ -7,7 +9,7 @@ export type InvestmentMode='capital'|'result';
 export type BalanceInput={value:number|null;base:number|null;investmentMode?:InvestmentMode;reportedGain?:number|null;type?:AccountType};
 export type Entry=BalanceInput & {accountId:string;name:string;categoryId:string;categoryName:string;categoryColor:string;type:AccountType;counts:Record<string,number>;extra:number;mode:'direct'|'count'|'amounts';cashAmounts?:Record<string,number>;deposit:number;withdrawal:number};
 export type Closing={month:string;status:'draft'|'closed';entries:Entry[];note:string;updatedAt:string;flow?:{income:number|null;expense:number|null}};
-export type Goal={id:string;name:string;target:number;accountId:string|null;deadline:string|null};
+export type Goal={id:string;name:string;target:number;accountId:string|null;deadline:string|null;ownership?:'all'|'PF'|'PJ';bank?:string|null};
 export type PortfolioState={printSettings?:PrintSettings;printProfiles?:PrintProfiles;printProjects?:PrintProject[];categories:Category[];accounts:Account[];closings:Closing[];goals?:Goal[];transactions?:Transaction[];spendingCategories?:SpendingCategory[];budgets?:Budget[]};
 export type Totals={total:number;invested:number;gain:number};
 export type Comparison={difference:number|null;percent:number|null};
@@ -40,7 +42,13 @@ else if(op.op==='goal'){
  const accountId=op.accountId??null,deadline=op.deadline??null;
  if(accountId!==null&&!s.accounts.some(a=>a.id===accountId))throw new Error('Conta da meta não encontrada.');
  if(deadline!==null&&(typeof deadline!=='string'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(deadline)||deadline<'1900-01'||deadline>'2199-12'))throw new Error('Prazo inválido.');
- s.goals??=[];if(op.id){const g=s.goals.find(g=>g.id===op.id);if(!g)throw new Error('Meta não encontrada.');Object.assign(g,{name:n,target:op.target,accountId,deadline});}else{if(s.goals.length>=100)throw new Error('Limite de metas atingido.');s.goals.push({id:crypto.randomUUID(),name:n,target:op.target,accountId,deadline});}
+ const existing=s.goals?.find(g=>g.id===op.id),scope:Pick<Goal,'ownership'|'bank'>={};
+ if(op.id&&!existing)throw new Error('Meta não encontrada.');
+ if(op.ownership!==undefined){if(!['all','PF','PJ'].includes(op.ownership))throw new Error('Escolha PF, PJ ou ambos para a meta.');scope.ownership=op.ownership;}
+ if(op.bank!==undefined){if(op.bank!==null&&(typeof op.bank!=='string'||op.bank.trim().length>80))throw new Error('Informe um banco de até 80 caracteres.');scope.bank=op.bank===null?null:organizationKey({name:'',bank:op.bank});}
+ const ownership=scope.ownership??existing?.ownership??'all',bank=op.bank===undefined?existing?.bank??null:scope.bank;
+ if(accountId!==null&&(ownership!=='all'||bank!==null))throw new Error('Escolha uma conta ou filtros de patrimônio para a meta.');
+ s.goals??=[];if(existing){Object.assign(existing,{name:n,target:op.target,accountId,deadline,...scope});}else{if(s.goals.length>=100)throw new Error('Limite de metas atingido.');s.goals.push({id:crypto.randomUUID(),name:n,target:op.target,accountId,deadline,...scope});}
 }
 else if(op.op==='deleteGoal'){if(!s.goals?.some(g=>g.id===op.id))throw new Error('Meta não encontrada.');s.goals=s.goals.filter(g=>g.id!==op.id);}
 else if(op.op==='reopen'){const c=s.closings.find(c=>c.month===op.month);if(!c)throw new Error('Fechamento não encontrado.');c.status='draft';c.updatedAt=new Date().toISOString();}
@@ -55,15 +63,17 @@ export function exportCsv(s:PortfolioState){const esc=(v:unknown)=>{let x=String
 export const exportJson=(s:PortfolioState)=>JSON.stringify({product:'Saldo',version:1,exportedAt:new Date().toISOString(),...s},null,2);
 
 export function monthDistance(from:string,to:string){const [y,m]=from.split('-').map(Number),[yy,mm]=to.split('-').map(Number);return (yy-y)*12+mm-m;}
+function goalClosings(s:PortfolioState,g:Goal){return g.accountId===null?filterWealth(s,{ownership:g.ownership??'all',bank:g.bank??null}).closings:s.closings;}
+function goalBalance(c:Closing,g:Goal){return g.accountId===null?completeWealthTotal(c.entries):c.entries.find(e=>e.accountId===g.accountId)?.value??null;}
 export function goalProgress(s:PortfolioState,g:Goal){
- const closing=s.closings.filter(c=>c.status==='closed').sort((a,b)=>a.month.localeCompare(b.month)).at(-1);
- const value=closing?(g.accountId===null?(closing.entries.every(e=>e.value!==null)?calculateTotals(closing.entries).total:null):closing.entries.find(e=>e.accountId===g.accountId)?.value??null):null;
+ const closing=goalClosings(s,g).filter(c=>c.status==='closed').sort((a,b)=>a.month.localeCompare(b.month)).at(-1);
+ const value=closing?goalBalance(closing,g):null;
  const remaining=value===null?null:Math.max(0,g.target-value),monthsLeft=closing&&g.deadline?monthDistance(closing.month,g.deadline):null;
  return {value,month:closing?.month??null,percent:value===null?null:Math.max(0,value/g.target*100),remaining,monthsLeft,monthlyNeeded:remaining!==null&&monthsLeft!==null&&monthsLeft>0?Math.ceil(remaining/monthsLeft):null};
 }
 export function goalForecast(s:PortfolioState,g:Goal){
  const progress=goalProgress(s,g);
- const samples=s.closings.filter(c=>c.status==='closed').map(c=>({month:c.month,value:g.accountId===null?(c.entries.length&&c.entries.every(e=>e.value!==null)?calculateTotals(c.entries).total:null):c.entries.find(e=>e.accountId===g.accountId)?.value??null})).filter((c):c is {month:string;value:number}=>c.value!==null).sort((a,b)=>a.month.localeCompare(b.month));
+ const samples=goalClosings(s,g).filter(c=>c.status==='closed').map(c=>({month:c.month,value:goalBalance(c,g)})).filter((c):c is {month:string;value:number}=>c.value!==null).sort((a,b)=>a.month.localeCompare(b.month));
  const first=samples[0],last=samples.at(-1),elapsed=first&&last?monthDistance(first.month,last.month):0;
  const averageMonthlyIncrease=elapsed>0?(last!.value-first.value)/elapsed:null;
  const monthsToGoal=progress.remaining===0?0:progress.remaining!==null&&averageMonthlyIncrease!==null&&averageMonthlyIncrease>0?Math.ceil(progress.remaining/averageMonthlyIncrease):null;
