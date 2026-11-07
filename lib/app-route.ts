@@ -1,0 +1,4 @@
+export type AppRoute={screen:string;month:string;view:'calculator'|'projects'|'costs'|'catalog';project:string|null};
+const screens=['dashboard','closing','analytics','history','report','goals','accounts','health','printing','profile'];
+export function readAppRoute(hash:string,fallback:AppRoute):AppRoute{const p=new URLSearchParams(hash.replace(/^#/,'')),month=p.get('month'),view=p.get('view');return {screen:screens.includes(p.get('screen')??'')?p.get('screen')!:fallback.screen,month:month&&/^\d{4}-(0[1-9]|1[0-2])$/.test(month)&&month>='1900-01'&&month<='2199-12'?month:fallback.month,view:view&&['calculator','projects','costs','catalog'].includes(view)?view as AppRoute['view']:'calculator',project:p.get('project')?.slice(0,100)||null};}
+export function appRouteHash(r:AppRoute){const p=new URLSearchParams({screen:r.screen,month:r.month});if(r.screen==='printing'){p.set('view',r.view);if(r.project)p.set('project',r.project);}return '#'+p.toString();}
