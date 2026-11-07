@@ -24,3 +24,5 @@
 .p3-back-button{flex-shrink:0}
 
 .p3-simple-products-heading,.p3-simple-product{grid-template-columns:minmax(160px,1fr) repeat(3,minmax(100px,auto)) repeat(2,minmax(115px,auto));min-width:790px}.p3-simple-product>.p3-list-filament,.p3-simple-product>.p3-list-time{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+.p3-simple-products-heading,.p3-simple-product{grid-template-columns:minmax(160px,1fr) repeat(3,minmax(100px,auto)) minmax(100px,auto) repeat(2,minmax(115px,auto));min-width:905px}.p3-simple-product>.p3-list-quantity{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
