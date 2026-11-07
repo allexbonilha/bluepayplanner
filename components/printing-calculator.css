@@ -15,3 +15,5 @@
 @container printing (max-width:1100px){.p3-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.p3-catalog-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.p3-catalog-filters>.p3-checkbox{grid-column:1/-1}}
 @container printing (max-width:600px){.p3-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.p3-catalog-grid,.p3-catalog-filters{grid-template-columns:minmax(0,1fr)}.p3-catalog-heading{align-items:flex-start;flex-direction:column;gap:12px}.p3-catalog-heading h2{font-size:22px}.p3-wholesale-metrics strong{font-size:20px}.p3-catalog-card{padding:18px}.p3-wholesale-limits{grid-template-columns:minmax(0,1fr)}.p3-wholesale-metrics{gap:11px}.p3-wholesale-metrics>div{padding:14px 11px}.p3-wholesale .p3-list-top{gap:10px}}
 @media(max-width:500px){.p3-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}@media print{.p3-catalog-filters{display:none}.p3-wholesale{break-inside:avoid}.p3-catalog-card footer button{display:none}}
+
+.p3-project-values{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 14px}.p3-project-values>div{min-width:0}.p3-project-unit-cost strong{color:#245cc5}
